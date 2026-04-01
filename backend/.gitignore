@@ -1,0 +1,15 @@
+# --- 后端相关 ---
+.venv/
+*.log
+__pycache__/
+.env
+
+# Django 特有
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# 静态文件与上传媒介
+/static/
+/media/

@@ -1,0 +1,121 @@
+-- =================================================
+-- 1. 初始化插件与枚举
+-- =================================================
+
+-- 启用向量扩展 (需确保数据库支持 pgvector)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 定义 AI 任务状态枚举
+CREATE TYPE ai_task_status AS ENUM ('pending', 'processing', 'done', 'failed');
+
+-- =================================================
+-- 2. 用户与权限表 (RBAC 模型)
+-- =================================================
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE, -- 如: admin, user
+    description TEXT
+);
+
+CREATE TABLE permissions (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE, -- 如: document_view, ai_query
+    description TEXT
+);
+
+-- 角色与权限多对多
+CREATE TABLE role_permissions (
+    role_id INTEGER REFERENCES roles(id) ON DELETE CASCADE,
+    permission_id INTEGER REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+);
+
+-- 用户与角色多对多
+CREATE TABLE user_roles (
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    role_id INTEGER REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, role_id)
+);
+
+-- =================================================
+-- 3. 文档管理表
+-- =================================================
+
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    file_path TEXT NOT NULL,
+    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    is_public BOOLEAN DEFAULT FALSE,
+    tags JSONB, -- 使用 JSONB 以支持更高效的索引
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE document_embeddings (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    -- vector(1536) 对应 OpenAI text-embedding-3-small 的维度
+    embedding vector(1536), 
+    content_chunk TEXT -- 存储该向量对应的文本片段
+);
+
+-- =================================================
+-- 4. AI 任务与日志表
+-- =================================================
+
+CREATE TABLE ai_tasks (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+    task_type VARCHAR(50), -- 如: summary, qa
+    status ai_task_status DEFAULT 'pending',
+    input_text TEXT,
+    result_text TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE action_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action_type VARCHAR(50), -- 如: login, upload
+    target_id INTEGER,       -- 通用 ID，建议结合具体业务场景
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =================================================
+-- 5. 自动更新 updated_at 的触发器函数
+-- =================================================
+
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- 为含有 updated_at 的表绑定触发器
+CREATE TRIGGER update_user_modtime BEFORE UPDATE ON users FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_doc_modtime BEFORE UPDATE ON documents FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+CREATE TRIGGER update_task_modtime BEFORE UPDATE ON ai_tasks FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+-- =================================================
+-- 6. 索引建议
+-- =================================================
+CREATE INDEX idx_docs_owner ON documents(owner_id);
+CREATE INDEX idx_action_log_user ON action_logs(user_id);
+-- 向量检索索引 (HNSW)
+CREATE INDEX idx_doc_vector ON document_embeddings USING hnsw (embedding vector_cosine_ops);
