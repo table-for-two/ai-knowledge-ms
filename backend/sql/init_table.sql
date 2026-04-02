@@ -19,11 +19,13 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
 );
 
 CREATE TABLE roles (
     id SERIAL PRIMARY KEY,
+    parent_id INTEGER REFERENCES roles(id) ON DELETE SET NULL, -- 父角色 ID
     name VARCHAR(50) NOT NULL UNIQUE, -- 如: admin, user
     description TEXT
 );
@@ -68,7 +70,33 @@ CREATE TABLE document_embeddings (
     document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
     -- vector(1536) 对应 OpenAI text-embedding-3-small 的维度
     embedding vector(1536), 
-    content_chunk TEXT -- 存储该向量对应的文本片段
+    content_chunk TEXT, -- 存储该向量对应的文本片段
+    chunk_index INTEGER, -- 存储该向量对应的文本片段索引
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP -- 方便排查索引时间
+);
+
+-- 知识库表
+CREATE TABLE knowledge_bases (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 知识库与文档多对多
+CREATE TABLE knowledge_bases_documents (
+    knowledge_base_id INTEGER REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    PRIMARY KEY (knowledge_base_id, document_id)
+);
+
+-- 角色与知识库多对多
+CREATE TABLE roles_knowledge_bases (
+    knowledge_base_id INTEGER REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    role_id INTEGER REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (knowledge_base_id, role_id)
 );
 
 -- =================================================
@@ -81,10 +109,13 @@ CREATE TABLE ai_tasks (
     document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
     task_type VARCHAR(50), -- 如: summary, qa
     status ai_task_status DEFAULT 'pending',
+    model_name VARCHAR(50) DEFAULT 'text-embedding-3-small',
+    token_usage INTEGER DEFAULT 0,
     input_text TEXT,
     result_text TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    error_message TEXT -- 存储任务执行时的错误信息，用于调试
 );
 
 CREATE TABLE action_logs (
