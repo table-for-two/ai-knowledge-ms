@@ -16,9 +16,17 @@ class KnowledgeBase(models.Model):
 
 class Document(models.Model):
     title = models.CharField(max_length=255)
-    file_path = models.TextField()
+    file = models.FileField(
+        upload_to='docs/%Y/%m/%d/',
+        verbose_name="物理文件",
+        default=''
+    )
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    knowledge_bases = models.ManyToManyField(KnowledgeBase, through='KnowledgeBaseDocument', related_name='documents')
+    knowledge_bases = models.ManyToManyField(
+        KnowledgeBase,
+        through='KnowledgeBaseDocument',
+        related_name='documents'
+    )
     is_public = models.BooleanField(default=False)
     tags = models.JSONField(default=dict)  # 对应 SQL 的 JSONB
     created_at = models.DateTimeField(auto_now_add=True)
@@ -26,7 +34,12 @@ class Document(models.Model):
     # 记录文档处理状态：上传中、分片中、已索引、失败
     status = models.CharField(
         max_length=20,
-        choices=[('pending', '待处理'), ('processing', '处理中'), ('completed', '已完成'), ('failed', '失败')],
+        choices=[
+            ('pending', '待处理'),
+            ('processing', '处理中'),
+            ('completed', '已完成'),
+            ('failed', '失败')
+        ],
         default='pending'
     )
     
@@ -63,6 +76,10 @@ class DocumentEmbedding(models.Model):
 class KnowledgeBaseDocument(models.Model):
     knowledge_base = models.ForeignKey(KnowledgeBase, on_delete=models.CASCADE, related_name='kb_document_links')
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='doc_kb_links')
+    
+    added_at = models.DateTimeField(auto_now_add=True)  # 特有的元数据
+    # 状态可以放在这里，实现“一文多库”的独立进度控制
+    status = models.CharField(max_length=20, default='pending')
     
     class Meta:
         db_table = 'knowledge_base_documents'
