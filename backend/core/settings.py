@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",  # allauth 依赖
+    'django.contrib.postgres',
     
     # 第三方基础插件
     "corsheaders",
@@ -115,21 +116,24 @@ DATABASES = {
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
-]
+# 开发环境下禁用严格密码校验
+if DEBUG:
+    AUTH_PASSWORD_VALIDATORS = []
+else:
+    AUTH_PASSWORD_VALIDATORS = [
+        {
+            "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        },
+        {
+            "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        },
+        {
+            "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+        },
+        {
+            "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+        },
+    ]
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
